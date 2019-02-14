@@ -23,10 +23,12 @@ namespace LiteServer.IO.Database
         }
 
 #if DEBUG
-        public List<(User, SocialVk)> GetAllUsers()
+        public List<(User, SocialVk)> SelectAllUsers()
         {
             var command = connection.CreateCommand();
-            command.CommandText = "SELECT hex(user.uuid) uuid, social_vk.vk_id vk_id, social_vk.vk_token vk_token FROM user LEFT JOIN social_vk ON user.uuid=social_vk.user_uuid";
+            command.CommandText = 
+                "SELECT hex(user.uuid) uuid, user.name name, user.email email, social_vk.vk_id vk_id, social_vk.vk_token vk_token " + 
+                "FROM user LEFT JOIN social_vk ON user.uuid=social_vk.user_uuid";
 
             using (var reader = command.ExecuteReader())
             {
@@ -36,8 +38,13 @@ namespace LiteServer.IO.Database
                     var userUuid = new Guid(reader.GetString("uuid"));
                     var vkId = reader.IsDBNull(1) ? -1 : reader.GetInt32("vk_id");
                     var vkToken = reader.IsDBNull(2) ? null : reader.GetString("vk_token");
+                    var name = reader.GetString("name");
+                    var email = reader.GetString("email");
 
-                    result.Add((new User() { Uuid = userUuid }, new SocialVk() { UserUuid = userUuid, VkId = vkId, VkToken = vkToken }));
+                    result.Add((
+                        new User() { Uuid = userUuid, Name = name, Email = email }, 
+                        new SocialVk() { UserUuid = userUuid, VkId = vkId, VkToken = vkToken }
+                    ));
                 }
 
                 return result;
@@ -45,7 +52,7 @@ namespace LiteServer.IO.Database
         }
 #endif
 
-        public bool GetSocialUserVk(int vkId, out SocialVk record)
+        public SocialVk SelectSocialUserVk(int vkId)
         {
             var command = connection.CreateCommand();
             command.CommandText = "SELECT vk_id,vk_token,hex(user_uuid) FROM social_vk WHERE vk_id=@vkid";
@@ -56,32 +63,31 @@ namespace LiteServer.IO.Database
                 var found = reader.Read();
                 if (!found)
                 {
-                    record = default(SocialVk);
-                    return false;
+                    return null;
                 }
                 else
                 {
                     var userUuid = reader.GetString("hex(user_uuid)");
                     var token = reader.GetString("vk_token");
 
-                    record = new SocialVk()
+                    return new SocialVk()
                     {
                         UserUuid = new Guid(userUuid),
                         VkToken = token,
                         VkId = vkId
                     };
-
-                    return true;
                 }
             }
         }
 
-        public (User user, SocialVk socialUser) CreateOrUpdateSocialUserVK(int vkId, string vkToken)
+        public (User user, SocialVk socialUser) CallCreateOrUpdateSocialUserVK(int vkId, string vkToken, string newUserName, string email)
         {
             var command = connection.CreateCommand();
-            command.CommandText = "CALL create_or_update_social_user_vk(@vkid, @vktoken)";
+            command.CommandText = "CALL create_or_update_social_user_vk(@vkid, @vktoken, @newusername, @email)";
             command.Parameters.AddWithValue("@vkid", vkId);
             command.Parameters.AddWithValue("@vktoken", vkToken);
+            command.Parameters.AddWithValue("@newusername", newUserName);
+            command.Parameters.AddWithValue("@email", email);
 
             using (var reader = command.ExecuteReader())
             {
@@ -91,7 +97,9 @@ namespace LiteServer.IO.Database
 
                 var user = new User()
                 {
-                    Uuid = new Guid(reader.GetString("user_uuid"))
+                    Uuid = new Guid(reader.GetString("user_uuid")),
+                    Name = reader.GetString("name"),
+                    Email = reader.GetString("email")
                 };
 
                 var socialUser = new SocialVk()
@@ -105,7 +113,7 @@ namespace LiteServer.IO.Database
             }
         }
 
-        public Token CreateToken(Guid userUuid, DateTime expireDate)
+        public Token CallCreateToken(Guid userUuid, DateTime expireDate)
         {
             var command = connection.CreateCommand();
             command.CommandText = "CALL create_token(@uuid, @date)";
@@ -124,6 +132,66 @@ namespace LiteServer.IO.Database
                     Value = new Guid(tokenValue)
                 };
             }
+        }
+
+        public Token SelectToken(Guid tokenUuid)
+        {
+            var tokenUuidString = tokenUuid.ToString("N");
+            using (var command = CreateCommand("SELECT hex(user_uuid) user_uuid, expires, hex(token_string) token_string FROM token WHERE token.token_string=unhex(@0)", tokenUuidString))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+
+                return new Token()
+                {
+                    ExpireDate = reader.GetDateTime("expires"),
+                    UserUuid = Guid.Parse(reader.GetString("user_uuid")),
+                    Value = Guid.Parse(reader.GetString("token_string"))
+                };
+            }
+        }
+
+        public User SelectUser(Guid userUuid)
+        {
+            var userUuidString = userUuid.ToString("N");
+            using (var command = CreateCommand("SELECT hex(uuid) uuid, name, email FROM user WHERE user.uuid=unhex(@0)", userUuidString))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+
+                return new User()
+                {
+                    Uuid = Guid.Parse(reader.GetString("uuid")),
+                    Name = reader.GetString("name"),
+                    Email = reader.GetString("email")
+                };
+            }
+        }
+
+        private MySqlCommand CreateCommand(string text, params (string key, object value)[] parameters)
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = text;
+
+            for (int i = 0; i < parameters.Length; ++i)
+            {
+                command.Parameters.AddWithValue(parameters[i].key, parameters[i].value);
+            }
+
+            return command;
+        }
+
+        private MySqlCommand CreateCommand(string text, params object[] format)
+        {
+            var command = connection.CreateCommand();
+            command.CommandText = text;
+
+            for (int i = 0; i < format.Length; ++i)
+            {
+                command.Parameters.AddWithValue($"@{i}", format[i]);
+            }
+
+            return command;
         }
 
         public void Dispose()

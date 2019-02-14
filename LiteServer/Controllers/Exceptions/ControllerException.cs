@@ -7,11 +7,14 @@ namespace LiteServer.Controllers.Exceptions
     {
         public string ExposedMessage
         { get; private set; }
+        public HttpStatusCode StatusCode
+        { get; private set; }
 
         public ControllerException(string debugMessage, Exception innerException = null, string exposedMessage = null, HttpStatusCode statusCode = HttpStatusCode.InternalServerError) 
             : base(debugMessage, innerException)
         {
             ExposedMessage = exposedMessage;
+            StatusCode = statusCode;
         }
     }
 }

@@ -4,13 +4,11 @@ using LiteServer.IO;
 using LiteServer.IO.Database;
 using LiteServer.Models;
 using LiteServer.Models.Query;
+using LiteServer.SocialApi;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Net;
 
 namespace LiteServer.Controllers
 {
@@ -34,9 +32,9 @@ namespace LiteServer.Controllers
             using (var con = new DbConnection(connectionSettings.ConnectionString))
             {
                 var result = new List<object>();
-                foreach (var r in con.GetAllUsers())
+                foreach (var r in con.SelectAllUsers())
                 {
-                    result.Add(new { uuid = r.Item2.UserUuid, vk_id = r.Item2.VkId, vk_token = r.Item2.VkToken });
+                    result.Add(new { uuid = r.Item2.UserUuid, name = r.Item1.Name, email = r.Item1.Email, vk_id = r.Item2.VkId, vk_token = r.Item2.VkToken });
                 }
                 return result;
             }
@@ -51,7 +49,7 @@ namespace LiteServer.Controllers
 
             if (!result)
             {
-                throw new AuthException("Failed to create session handler.");
+                throw new AuthenticationException("Failed to create session handler.");
             }
 
             return new SessionCodeModel()
@@ -60,50 +58,13 @@ namespace LiteServer.Controllers
             };
         }
 
-        [HttpGet("redirect/vk")]
-        public object GetVkRedirectPage()
-        {
-            if (HttpContext.Request.Query.ContainsKey("error"))
-            {
-                throw new AuthException("Vk returns error on redirect.");
-            }
-
-            var vkCode = HttpContext.Request.Query["code"];
-            var (vkAccessToken, vkUserId) = RequestVkAccessToken(vkCode);
-
-            if (vkAccessToken == null)
-            {
-                throw new AuthException("Failed to get access token.");
-            }
-
-            var sessionCode = HttpContext.Request.Query["state"];
-            var sessionHandler = AuthSessionStorage.GetHandler(sessionCode);
-
-            if (sessionHandler == null)
-            {
-                throw new AuthException("Failed to find proper auth session handler.");
-            }
-
-            if (sessionHandler.IsExpired)
-            {
-                throw new AuthException("Auth session expired.");
-            }
-
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
-            {
-                var data = con.CreateOrUpdateSocialUserVK(vkUserId, vkAccessToken);
-                sessionHandler.UserUuid = data.user.Uuid;
-                return data;
-            }
-        }
-
-        [HttpGet("isAuthorized")]
+        [HttpGet("isAuthenticated")]
         public object GetIsAuthorized([FromQuery] SessionCodeQueryModel parameters)
         {
             var handler = AuthSessionStorage.GetHandler(parameters.SessionCode);
             if (handler == null)
             {
-                return new AuthException("Failed to find session handler.");
+                throw new AuthenticationException("Session handler not found.");
             }
 
             return new OperationResultModel()
@@ -119,22 +80,22 @@ namespace LiteServer.Controllers
 
             if (sessionHandler == null)
             {
-                throw new AuthException("Session handler not found.");
+                throw new AuthenticationException("Session handler not found.");
             }
             else if (sessionHandler.UserUuid == null)
             {
-                throw new AuthException("Authorization not complete.");
+                throw new AuthenticationException("Authentication not finished.");
             }
             else if (sessionHandler.IsExpired)
             {
-                throw new AuthException("Session handler expired.");
+                throw new AuthenticationException("Session handler has expired.");
             }
 
             using (var con = new DbConnection(connectionSettings.ConnectionString))
             {
                 try
                 {
-                    var token = con.CreateToken(sessionHandler.UserUuid.Value, DateTime.UtcNow + new TimeSpan(365, 0, 0, 0));
+                    var token = con.CallCreateToken(sessionHandler.UserUuid.Value, DateTime.UtcNow + new TimeSpan(365, 0, 0, 0));
                     return new TokenModel()
                     {
                         ExpireDate = token.ExpireDate,
@@ -149,31 +110,22 @@ namespace LiteServer.Controllers
             }
         }
 
-        private (string, int) RequestVkAccessToken(string vkCode)
+        private string FormatName(string firstName, string lastName)
         {
-            try
+            if (String.IsNullOrWhiteSpace(firstName))
             {
-                var uri =
-                    $"https://oauth.vk.com/access_token?" +
-                    $"client_id={socialConfig.Vk.AppId}&client_secret={socialConfig.Vk.SecureKey}&" +
-                    $"redirect_uri={socialConfig.Vk.RedirectUri}&code={vkCode}";
-
-                var request = WebRequest.Create(uri);
-                var response = request.GetResponse();
-
-                using (var stream = response.GetResponseStream())
-                using (var reader = new StreamReader(stream))
-                {
-                    var json = JObject.Parse(reader.ReadToEnd());
-                    var token = json["access_token"].ToString();
-                    var userid = int.Parse(json["user_id"].ToString());
-
-                    return (token, userid);
-                }
+                if (String.IsNullOrWhiteSpace(lastName))
+                { return String.Empty; }
+                else
+                { return lastName; }
             }
-            catch (Exception e)
+            else if (String.IsNullOrWhiteSpace(lastName))
             {
-                return (null, 0);
+                return firstName;
+            }
+            else
+            {
+                return $"{lastName} {firstName}";
             }
         }
     }

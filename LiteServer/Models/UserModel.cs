@@ -7,5 +7,9 @@ namespace LiteServer.Models
     {
         [JsonProperty("user_uuid")]
         public Guid Uuid;
+        [JsonProperty("name")]
+        public string Name;
+        [JsonProperty("email")]
+        public string Email;
     }
 }

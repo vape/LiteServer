@@ -33,8 +33,8 @@ namespace LiteServer.Middleware
 
         private static Task HandleExceptionAsync(HttpContext context, Exception exception, IHostingEnvironment env)
         {
-            var code = HttpStatusCode.InternalServerError;
             var litex = exception as ControllerException;
+            var code = litex?.StatusCode ?? HttpStatusCode.InternalServerError;
             var message = litex?.ExposedMessage ?? "unknown error";
 
             string result;
