@@ -20,19 +20,8 @@ namespace LiteServer
         {
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
             services.AddOptions();
-            services.Configure<DatabaseConfig>((d) =>
-            {
-                d.ConnectionString = Configuration.GetSection("Database:ConnectionString").Value;
-            });
-            services.Configure<SocialConfig>((s) =>
-            {
-                s.Vk = new VkConfig()
-                {
-                    AppId = Configuration.GetSection("Social:Vk:AppId").Value,
-                    SecureKey = Configuration.GetSection("Social:Vk:SecureKey").Value,
-                    RedirectUri = Configuration.GetSection("Social:Vk:RedirectUri").Value
-                };
-            });
+            services.Configure<DatabaseConfig>((d) => Configuration.GetSection("Database").Bind(d));
+            services.Configure<SocialConfig>((s) => Configuration.GetSection("Social").Bind(s));
         }
         
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)

@@ -2,13 +2,17 @@
 {
     public class VkConfig
     {
-        public string AppId;
-        public string SecureKey;
-        public string RedirectUri;
+        public string AppId
+        { get; set; }
+        public string SecureKey
+        { get; set; }
+        public string RedirectUri
+        { get; set; }
     }
 
     public class SocialConfig
     {
-        public VkConfig Vk;
+        public VkConfig Vk
+        { get; set; }
     }
 }

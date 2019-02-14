@@ -2,6 +2,7 @@
 {
     public class DatabaseConfig
     {
-        public string ConnectionString;
+        public string ConnectionString
+        { get; set; }
     }
 }
