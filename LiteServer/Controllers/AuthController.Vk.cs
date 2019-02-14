@@ -26,6 +26,11 @@ namespace LiteServer.Controllers
             var vkApi = new VkApi(socialConfig.Vk);
             var (vkAccessToken, vkUserId, vkEmail) = vkApi.RequestAccessToken(vkCode);
 
+            if (vkEmail.Length > MaxEmailLength)
+            {
+                vkEmail = null;
+            }
+
             if (vkAccessToken == null)
             {
                 throw new AuthenticationException("Failed to obtain vk access token.");

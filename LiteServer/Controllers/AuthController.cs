@@ -16,6 +16,9 @@ namespace LiteServer.Controllers
     [ApiController]
     public partial class AuthController : ControllerBase
     {
+        public const int MaxNameLength = 48;
+        public const int MaxEmailLength = 64;
+
         private DatabaseConfig connectionSettings;
         private SocialConfig socialConfig;
 
@@ -112,21 +115,21 @@ namespace LiteServer.Controllers
 
         private string FormatName(string firstName, string lastName)
         {
-            if (String.IsNullOrWhiteSpace(firstName))
+            var result =
+                String.IsNullOrWhiteSpace(firstName) ?
+                    (String.IsNullOrWhiteSpace(lastName) ?
+                        String.Empty :
+                        lastName) :
+                String.IsNullOrWhiteSpace(lastName) ?
+                    firstName :
+                    $"{lastName} {firstName}";
+
+            if (result.Length > MaxNameLength)
             {
-                if (String.IsNullOrWhiteSpace(lastName))
-                { return String.Empty; }
-                else
-                { return lastName; }
+                result = result.Substring(0, MaxNameLength);
             }
-            else if (String.IsNullOrWhiteSpace(lastName))
-            {
-                return firstName;
-            }
-            else
-            {
-                return $"{lastName} {firstName}";
-            }
+
+            return result;
         }
     }
 }
