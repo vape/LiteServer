@@ -8,5 +8,6 @@ namespace LiteServer.IO.Database.Models
         public Guid Uuid;
         public string Name;
         public string Email;
+        public bool Deleted;
     }
 }

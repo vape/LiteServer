@@ -26,7 +26,7 @@ namespace LiteServer.Controllers
         {
             using (var con = new DbConnection(connectionSettings.ConnectionString))
             {
-                var token = ControllerHelper.ValidateToken(tokenInfo, con);
+                var token = ControllerHelper.SelectAndValidateToken(con, tokenInfo.Token);
                 var user = con.SelectUser(token.UserUuid);
 
                 return new UserModel()

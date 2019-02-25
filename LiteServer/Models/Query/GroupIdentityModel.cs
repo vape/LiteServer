@@ -1,13 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using System;
 
 namespace LiteServer.Models.Query
 {
-    public class TokenQueryModel
+    public class GroupIdentityModel
     {
         [BindRequired]
-        [FromQuery(Name = "token")]
-        public Guid Token { get; set; }
+        [FromQuery(Name = "group_id")]
+        public uint GroupId
+        { get; set; }
     }
 }

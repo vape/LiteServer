@@ -22,6 +22,7 @@ namespace LiteServer
             services.AddOptions();
             services.Configure<DatabaseConfig>((d) => Configuration.GetSection("Database").Bind(d));
             services.Configure<SocialConfig>((s) => Configuration.GetSection("Social").Bind(s));
+            services.Configure<PlatformConfig>((p) => Configuration.GetSection("PlatformConfig").Bind(p));
         }
         
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)

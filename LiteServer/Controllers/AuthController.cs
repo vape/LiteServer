@@ -4,7 +4,6 @@ using LiteServer.IO;
 using LiteServer.IO.Database;
 using LiteServer.Models;
 using LiteServer.Models.Query;
-using LiteServer.SocialApi;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using System;
@@ -22,7 +21,7 @@ namespace LiteServer.Controllers
         private DatabaseConfig connectionSettings;
         private SocialConfig socialConfig;
 
-        public AuthController(IOptions<DatabaseConfig> databaseConfig, IOptions<SocialConfig> socialConfig)
+        public AuthController(IOptions<DatabaseConfig> databaseConfig, IOptions<SocialConfig> socialConfig, IOptions<PlatformConfig> platform)
         {
             this.connectionSettings = databaseConfig.Value;
             this.socialConfig = socialConfig.Value;
@@ -55,7 +54,7 @@ namespace LiteServer.Controllers
                 throw new AuthenticationException("Failed to create session handler.");
             }
 
-            return new SessionCodeModel()
+            return new Models.SessionCodeModel()
             {
                 Value = handler.Code
             };
