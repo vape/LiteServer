@@ -36,8 +36,8 @@ namespace LiteServer.IO.Database
                 while (reader.Read())
                 {
                     var userUuid = new Guid(reader.GetString("uuid"));
-                    var vkId = reader.IsDBNull(1) ? -1 : reader.GetInt32("vk_id");
-                    var vkToken = reader.IsDBNull(2) ? null : reader.GetString("vk_token");
+                    var vkId = reader.IsDBNull(3) ? -1 : reader.GetInt32("vk_id");
+                    var vkToken = reader.IsDBNull(4) ? null : reader.GetString("vk_token");
                     var name = reader.GetString("name");
                     var email = reader.GetString("email");
                     var deleted = reader.GetBoolean("deleted");
@@ -93,8 +93,6 @@ namespace LiteServer.IO.Database
             using (var reader = command.ExecuteReader())
             {
                 reader.Read();
-
-                var userUuid = reader.GetString("user_uuid");
 
                 var user = new User()
                 {
@@ -302,6 +300,42 @@ namespace LiteServer.IO.Database
                 }
 
                 return result;
+            }
+        }
+
+        public (Guid uuid, byte[] hash, byte[] salt) SelectUserData(string email)
+        {
+            using (var command = CreateCommand("SELECT password, salt, hex(uuid) as uuid FROM user WHERE user.email=@0", email))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+
+                var hash = new byte[32];
+                reader.GetBytes(0, 0, hash, 0, hash.Length);
+                var salt = new byte[32];
+                reader.GetBytes(1, 0, salt, 0, salt.Length);
+
+                var uuid = Guid.Parse(reader.GetString("uuid"));
+
+                return (uuid, hash, salt);
+            }
+        }
+
+        public User InsertUser(string userName, string userEmail, byte[] hash, byte[] salt)
+        {
+            using (var command = CreateCommand("CALL create_user(@0, @1, @2, @3)", userName, userEmail, hash, salt))
+            using (var reader = command.ExecuteReader())
+            {
+                reader.Read();
+
+                var user = new User()
+                {
+                    Uuid = new Guid(reader.GetString("user_uuid")),
+                    Name = reader.GetString("name"),
+                    Email = reader.GetString("email"),
+                    Deleted = reader.GetBoolean("deleted")
+                };
+                return user;
             }
         }
 
