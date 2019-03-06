@@ -1,17 +1,14 @@
 ﻿using LiteServer.Config;
 using LiteServer.Controllers.Exceptions;
-using LiteServer.IO.Database;
+using LiteServer.Controllers.Extensions;
+using LiteServer.IO.DAL.Repository;
 using LiteServer.Models;
 using LiteServer.Models.Query;
-using LiteServer.Utils;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using MySql.Data.MySqlClient;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace LiteServer.Controllers
 {
@@ -32,58 +29,44 @@ namespace LiteServer.Controllers
     {
         public const int MaxGroupNameLength = 24;
 
-        private DatabaseConfig databaseConfig;
-        private PlatformConfig platformConfig;
-        private IHostingEnvironment environment;
+        private readonly IGroupRepository groupRepository;
+        private readonly ITokenRepository tokenRepository;
+        private readonly IUserRepository userRepository;
+        private readonly PlatformConfig platformConfig;
 
-        public GroupController(IHostingEnvironment env, IOptions<DatabaseConfig> databaseConfig, IOptions<PlatformConfig> platformConfig)
+        public GroupController(IGroupRepository groupRepository, ITokenRepository tokenRepository, IUserRepository userRepository, IOptions<PlatformConfig> platformConfig)
         {
-            this.databaseConfig = databaseConfig.Value;
+            this.groupRepository = groupRepository;
+            this.tokenRepository = tokenRepository;
+            this.userRepository = userRepository;
             this.platformConfig = platformConfig.Value;
-            this.environment = env;
         }
 
         [HttpGet("members")]
-        public object GetMembers([FromQuery] TokenQueryModel token, [FromQuery] GroupIdentityModel groupIdentity)
+        public object GetMembers([FromQuery] TokenQueryModel tokenData, [FromQuery] GroupIdentityModel groupIdentity)
         {
-            using (var con = new DbConnection(databaseConfig.ConnectionString))
-            {
-                var tokenData = ControllerHelper.SelectAndValidateToken(con, token.Token);
-                var membersData = con.SelectGroupMembers(groupIdentity.GroupId);
-                var result = new List<GroupMemberModel>();
+            var token = tokenRepository.ValidateToken(tokenData.Token);
+            var members = groupRepository.SelectMembers(groupIdentity.GroupId);
+            var result = new List<GroupMemberModel>();
 
-                foreach (var memberData in membersData) {
-                    result.Add(new GroupMemberModel() {
-                        GroupRole = memberData.Role,
-                        UserName = memberData.User.Name,
-                        UserUuid = memberData.User.Uuid
-                    });
-                }
-
-                return result;
+            foreach (var member in members) {
+                result.Add(GroupMemberModel.Create(member));
             }
+
+            return result;
         }
 
         [HttpGet("get")]
         public object GetGroup([FromQuery] GroupIdentityModel groupIdentity)
         {
-            using (var con = new DbConnection(databaseConfig.ConnectionString))
-            {
-                var groupData = con.SelectGroupAndMembersCount(groupIdentity.GroupId);
+            var group = groupRepository.Select(groupIdentity.GroupId);
+            var membersCount = groupRepository.SelectMembersCount(groupIdentity.GroupId);
 
-                return new GroupModel()
-                {
-                    CreatorUuid = groupData.group.CreatorUuid,
-                    Id = groupData.group.Id,
-                    MembersCount = groupData.membersCount,
-                    Name = groupData.group.Name,
-                    Type = groupData.group.Type
-                };
-            }
+            return GroupModel.Create(group, membersCount);
         }
 
         [HttpPost("create")]
-        public object CreateGroup([FromQuery] NewGroupInfoQueryModel groupInfo, [FromQuery] TokenQueryModel token)
+        public object CreateGroup([FromQuery] NewGroupInfoQueryModel groupInfo, [FromQuery] TokenQueryModel tokenData)
         {
             if (groupInfo.Name.Length > MaxGroupNameLength)
             {
@@ -95,96 +78,82 @@ namespace LiteServer.Controllers
                 throw new Exceptions.FormatException("Unknown group type.", "unknown group type");
             }
 
-            using (var con = new DbConnection(databaseConfig.ConnectionString))
-            {
-                var userToken = ControllerHelper.SelectAndValidateToken(con, token.Token);
-                var group = con.InsertGroup(groupInfo.Type, groupInfo.Name, userToken.UserUuid);
+            var token = tokenRepository.ValidateToken(tokenData.Token);
+            var group = groupRepository.CreateGroup(groupInfo.Name, groupInfo.Type, token.UserUuid);
 
-                return new GroupModel()
-                {
-                    Id = group.Id,
-                    Name = group.Name,
-                    Type = group.Type,
-                    CreatorUuid = group.CreatorUuid,
-                };
-            }
+            return GroupModel.Create(group);
         }
 
         [HttpPost("join")]
-        public object JoinGroup([FromQuery] TokenQueryModel token, [FromQuery] GroupIdentityModel groupIdentity)
+        public object JoinGroup([FromQuery] TokenQueryModel tokenData, [FromQuery] GroupIdentityModel groupIdentity)
         {
-            using (var con = new DbConnection(databaseConfig.ConnectionString))
+            var userContext = tokenRepository.ValidateToken(userRepository, tokenData.Token);
+            var group = groupRepository.Select(groupIdentity.GroupId);
+            var membersCount = groupRepository.SelectMembersCount(groupIdentity.GroupId);
+
+            if (membersCount >= platformConfig.GroupMaxMembers)
             {
-                var userData = ControllerHelper.SelectAndValidateTokenAndUser(con, token.Token);
-                var groupData = con.SelectGroupAndMembersCount(groupIdentity.GroupId);
+                throw new BasicControllerException("Group is full.", "group is full");
+            }
 
-                if (groupData.membersCount >= platformConfig.GroupMaxMembers)
-                {
-                    throw new BasicControllerException("Group is full.", "group is full");
-                }
+            var joined = false;
+            var exception = default(Exception);
 
-                var joined = false;
-                var exception = default(Exception);
-
-                try
+            try
+            {
+                joined = groupRepository.InsertMember(userContext.user.Uuid, group.Id, (byte)GroupMemberRole.Default);
+            }
+            catch (MySqlException e)
+            {
+                if (e.Number == 1062)
                 {
-                    joined = con.InsertGroupMember(userData.user.Uuid, groupIdentity.GroupId, (short)GroupType.Default);
+                    throw new BasicControllerException(e.Message, "already joined", e);
                 }
-                catch (MySqlException e)
-                {
-                    if (e.Number == 1062)
-                    {
-                        throw new BasicControllerException(e.Message, "already joined", e);
-                    }
-                    else
-                    {
-                        exception = e;
-                    }
-                }
-                catch (Exception e)
+                else
                 {
                     exception = e;
                 }
-                finally
-                {
-                    if (!joined && exception != null)
-                    {
-                        throw new BasicControllerException("Failed to insert new group member.", "failed to join group", exception);
-                    }
-                }
-
-                return new OperationResultModel() { Result = joined };
             }
+            catch (Exception e)
+            {
+                exception = e;
+            }
+            finally
+            {
+                if (!joined && exception != null)
+                {
+                    throw new BasicControllerException("Failed to insert new group member.", "failed to join group", exception);
+                }
+            }
+
+            return new OperationResultModel() { Result = joined };
         }
 
         [HttpPost("leave")]
-        public object LeaveGroup([FromQuery] TokenQueryModel token, [FromQuery] GroupIdentityModel groupIdentity)
+        public object LeaveGroup([FromQuery] TokenQueryModel tokenData, [FromQuery] GroupIdentityModel groupIdentity)
         {
-            using (var con = new DbConnection(databaseConfig.ConnectionString))
+            var userContext = tokenRepository.ValidateToken(userRepository, tokenData.Token);
+
+            var left = false;
+            var exception = default(Exception);
+
+            try
             {
-                var userData = ControllerHelper.SelectAndValidateTokenAndUser(con, token.Token);
-
-                var left = false;
-                var exception = default(Exception);
-
-                try
-                {
-                    left = con.DeleteGroupMember(userData.user.Uuid, groupIdentity.GroupId);
-                }
-                catch (Exception e)
-                {
-                    exception = e;
-                }
-                finally
-                {
-                    if (!left)
-                    {
-                        throw new BasicControllerException("Failed to leave group.", "failed to leave group", exception);
-                    }
-                }
-
-                return new OperationResultModel() { Result = left };
+                left = groupRepository.DeleteMember(userContext.user.Uuid, groupIdentity.GroupId);
             }
+            catch (Exception e)
+            {
+                exception = e;
+            }
+            finally
+            {
+                if (!left)
+                {
+                    throw new BasicControllerException("Failed to leave group.", "failed to leave group", exception);
+                }
+            }
+
+            return new OperationResultModel() { Result = left };
         }
     }
 }

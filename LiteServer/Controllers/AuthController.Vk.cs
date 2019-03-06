@@ -1,6 +1,5 @@
 ﻿using LiteServer.Controllers.Exceptions;
 using LiteServer.IO;
-using LiteServer.IO.Database;
 using LiteServer.SocialApi;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,7 +18,7 @@ namespace LiteServer.Controllers
         {
             if (HttpContext.Request.Query.ContainsKey("error"))
             {
-                throw new AuthenticationException("Vk failed to authenticate user.");
+                throw new AuthenticationException($"Vk failed to authenticate user with error: {HttpContext.Request.Query["error"]}", "auth failed");
             }
 
             var vkCode = HttpContext.Request.Query["code"];
@@ -55,12 +54,14 @@ namespace LiteServer.Controllers
             var userInfo = vkApi.GetUserName();
             var name = FormatName(userInfo.firstName, userInfo.lastName);
 
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
-            {
-                var data = con.CallCreateOrUpdateSocialUserVK(vkUserId, vkAccessToken, name, vkEmail);
-                sessionHandler.UserUuid = data.user.Uuid;
-                return data;
-            }
+            var data = userRepository.CreateOrUpdateWithVK(vkUserId, vkAccessToken, name, vkEmail);
+            sessionHandler.UserUuid = data.User.Uuid;
+
+#if DEBUG
+            return data;
+#else
+            return new OperationResultModel() { Result = true };
+#endif 
         }
     }
 }

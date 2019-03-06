@@ -1,10 +1,8 @@
-﻿using LiteServer.Config;
-using LiteServer.IO.Database;
+﻿using LiteServer.Controllers.Extensions;
+using LiteServer.IO.DAL.Repository;
 using LiteServer.Models;
 using LiteServer.Models.Query;
-using LiteServer.Utils;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
 
 namespace LiteServer.Controllers
 {
@@ -12,30 +10,22 @@ namespace LiteServer.Controllers
     [ApiController]
     public class UserController : ControllerBase
     {
-        private DatabaseConfig connectionSettings;
-        private SocialConfig socialConfig;
+        private readonly IUserRepository userRepository;
+        private readonly ITokenRepository tokenRepository;
 
-        public UserController(IOptions<DatabaseConfig> databaseConfig, IOptions<SocialConfig> socialConfig)
+        public UserController(IUserRepository userRepository, ITokenRepository tokenRepository)
         {
-            this.connectionSettings = databaseConfig.Value;
-            this.socialConfig = socialConfig.Value;
+            this.userRepository = userRepository;
+            this.tokenRepository = tokenRepository;
         }
 
         [HttpGet("me")]
         public UserModel GetMe([FromQuery] TokenQueryModel tokenInfo)
         {
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
-            {
-                var token = ControllerHelper.SelectAndValidateToken(con, tokenInfo.Token);
-                var user = con.SelectUser(token.UserUuid);
+            var token = tokenRepository.ValidateToken(tokenInfo.Token);
+            var user = userRepository.Select(token.UserUuid);
 
-                return new UserModel()
-                {
-                    Uuid = user.Uuid,
-                    Name = user.Name,
-                    Email = user.Email
-                };
-            }
+            return UserModel.Create(user);
         }
     }
 }

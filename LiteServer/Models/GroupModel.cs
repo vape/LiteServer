@@ -1,13 +1,23 @@
-﻿using Newtonsoft.Json;
+﻿using LiteServer.IO.DAL.Model;
+using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace LiteServer.Models
 {
     public class GroupModel
     {
+        public static GroupModel Create(Group group, int membersCount = -1)
+        {
+            return new GroupModel()
+            {
+                Id = group.Id,
+                CreatorUuid = group.CreatorUuid,
+                Name = group.Name,
+                Type = group.Type,
+                MembersCount = membersCount
+            };
+        }
+
         [JsonProperty("id")]
         public uint Id;
         [JsonProperty("type")]

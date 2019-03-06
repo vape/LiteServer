@@ -1,7 +1,7 @@
 ﻿using LiteServer.Config;
 using LiteServer.Controllers.Exceptions;
 using LiteServer.IO;
-using LiteServer.IO.Database;
+using LiteServer.IO.DAL.Repository;
 using LiteServer.Models;
 using LiteServer.Models.Query;
 using LiteServer.Utils;
@@ -11,6 +11,7 @@ using MySql.Data.MySqlClient;
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace LiteServer.Controllers
 {
@@ -23,29 +24,27 @@ namespace LiteServer.Controllers
         public const int PasswordHashIterations = 4096;
         public const int PasswordMinLength = 6;
         public const int PasswordMaxLength = 64;
+        public const int TokenDurationDays = 30;
+        
+        private readonly SocialConfig socialConfig;
+        private readonly IUserRepository userRepository;
+        private readonly ITokenRepository tokenRepository;
 
-        private DatabaseConfig connectionSettings;
-        private SocialConfig socialConfig;
-
-        public AuthController(IOptions<DatabaseConfig> databaseConfig, IOptions<SocialConfig> socialConfig, IOptions<PlatformConfig> platform)
+        public AuthController(IUserRepository userRepository, ITokenRepository tokenRepository, IOptions<SocialConfig> socialConfig)
         {
-            this.connectionSettings = databaseConfig.Value;
             this.socialConfig = socialConfig.Value;
+            this.userRepository = userRepository;
+            this.tokenRepository = tokenRepository;
         }
 
 #if DEBUG
         [HttpGet]
         public object Get()
         {
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
-            {
-                var result = new List<object>();
-                foreach (var r in con.SelectAllUsers())
-                {
-                    result.Add(new { uuid = r.Item2.UserUuid, name = r.Item1.Name, email = r.Item1.Email, vk_id = r.Item2.VkId, vk_token = r.Item2.VkToken });
-                }
-                return result;
-            }
+            var result = new List<object>();
+            foreach (var r in userRepository.SelectAll())
+            { result.Add(r); }
+            return result;
         }
 #endif
 
@@ -60,7 +59,7 @@ namespace LiteServer.Controllers
                 throw new AuthenticationException("Failed to create session handler.");
             }
 
-            return new Models.SessionCodeModel()
+            return new SessionCodeModel()
             {
                 Value = handler.Code
             };
@@ -99,90 +98,63 @@ namespace LiteServer.Controllers
                 throw new AuthenticationException("Session handler has expired.");
             }
 
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
+            try
             {
-                try
-                {
-                    var token = con.CallCreateToken(sessionHandler.UserUuid.Value, DateTime.UtcNow + new TimeSpan(365, 0, 0, 0));
-                    return new TokenModel()
-                    {
-                        ExpireDate = token.ExpireDate,
-                        UserUuid = token.UserUuid,
-                        Value = token.Value
-                    };
-                }
-                finally
-                {
-                    AuthSessionStorage.RemoveHandler(sessionHandler.Code);
-                }
+                var token = tokenRepository.CreateToken(sessionHandler.UserUuid.Value, new TimeSpan(TokenDurationDays, 0, 0, 0));
+                return TokenModel.Create(token);
+            }
+            finally
+            {
+                AuthSessionStorage.RemoveHandler(sessionHandler.Code);
             }
         }
 
         [HttpPost("authorize")]
         public object AuthorizeWithLoginAndPassword([FromQuery] AuthorizationQueryModel authData)
         {
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
+            var user = userRepository.SelectWithEmail(authData.Login);
+            var password = System.Text.Encoding.UTF8.GetBytes(authData.Password);
+
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, user.Salt, PasswordHashIterations, HashAlgorithmName.SHA256))
             {
-                var userData = con.SelectUserData(authData.Login);
-                var givenPassword = System.Text.Encoding.UTF8.GetBytes(authData.Password);
-
-                using (var pbkdf2 = new Rfc2898DeriveBytes(givenPassword, userData.salt, PasswordHashIterations, HashAlgorithmName.SHA256))
+                var hash = pbkdf2.GetBytes(32);
+                if (Toolbox.UnsafeCompare(hash, user.PasswordHash))
                 {
-                    var hash = pbkdf2.GetBytes(32);
-                    if (Toolbox.UnsafeCompare(hash, userData.hash))
-                    {
-                        var token = con.CallCreateToken(userData.uuid, DateTime.UtcNow + new TimeSpan(365, 0, 0, 0));
-                        return new TokenModel()
-                        {
-                            ExpireDate = token.ExpireDate,
-                            UserUuid = token.UserUuid,
-                            Value = token.Value
-                        };
-                    }
+                    var token = tokenRepository.CreateToken(user.Uuid, new TimeSpan(TokenDurationDays, 0, 0, 0));
+                    return TokenModel.Create(token);
                 }
-
-                throw new AuthenticationException("invalid login or password");
             }
+
+            throw new AuthenticationException("invalid login or password");
         }
 
         [HttpPost("register")]
         public object RegisterUser([FromQuery] RegistrationQueryModel registrationData)
         {
-            using (var con = new DbConnection(connectionSettings.ConnectionString))
+            var password = Encoding.UTF8.GetBytes(registrationData.Password);
+            var salt = new byte[32]; RandomNumberGenerator.Fill(salt);
+            var hash = new byte[32];
+
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, PasswordHashIterations, HashAlgorithmName.SHA256))
             {
-                var password = System.Text.Encoding.UTF8.GetBytes(registrationData.Password);
-                var salt = new byte[32];
-                RandomNumberGenerator.Fill(salt);
-                var hash = new byte[32];
+                hash = pbkdf2.GetBytes(32);
+            }
 
-                using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, PasswordHashIterations, HashAlgorithmName.SHA256))
+            try
+            {
+                var user = userRepository.CreateUser(registrationData.Name, registrationData.Login, password, salt);
+                return UserModel.Create(user);
+            }
+            catch (MySqlException e)
+            {
+                if (e.Number == 1062)
                 {
-                    hash = pbkdf2.GetBytes(32);
+                    throw new BasicControllerException(e.Message, "user already exists", e);
                 }
-
-                var user = default(IO.Database.Models.User);
-                try
+                else
                 {
-                    user = con.InsertUser(registrationData.Name, registrationData.Login, hash, salt);
+                    throw;
                 }
-                catch (MySqlException e)
-                {
-                    if (e.Number == 1062)
-                    {
-                        throw new BasicControllerException(e.Message, "user already exists", e);
-                    }
-                    else
-                    {
-                        throw;
-                    }
-                }
-
-                return new UserModel()
-                {
-                    Email = user.Email,
-                    Name = user.Name,
-                    Uuid = user.Uuid
-                };
             }
         }
 
