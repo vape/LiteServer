@@ -142,7 +142,7 @@ namespace LiteServer.Controllers
 
             try
             {
-                var user = userRepository.CreateUser(registrationData.Name, registrationData.Login, password, salt);
+                var user = userRepository.CreateUser(registrationData.Name, registrationData.Login, hash, salt);
                 return UserModel.Create(user);
             }
             catch (MySqlException e)
