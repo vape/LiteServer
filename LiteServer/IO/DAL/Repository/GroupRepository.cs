@@ -13,6 +13,7 @@ namespace LiteServer.IO.DAL.Repository
         int SelectMembersCount(uint id);
         bool InsertMember(Guid userUuid, uint groupId, byte role);
         bool DeleteMember(Guid userUuid, uint groupId);
+        bool IsMember(Guid userUuid, uint groupId);
     }
 
     public class GroupRepository : IGroupRepository
@@ -85,6 +86,11 @@ namespace LiteServer.IO.DAL.Repository
         public bool DeleteMember(Guid userUuid, uint groupId)
         {
             return context.Db.Execute("DELETE FROM group_member WHERE user_uuid = @0 AND group_id = @1", userUuid.ToBytes(), groupId) != 0;
+        }
+
+        public bool IsMember(Guid userUuid, uint groupId)
+        {
+            return context.Db.Exists<GroupMember>("group_id=@0 AND user_uuid=@1", groupId, userUuid.ToBytes());
         }
     }
 }

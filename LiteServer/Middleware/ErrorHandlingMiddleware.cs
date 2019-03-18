@@ -1,4 +1,5 @@
 ﻿using LiteServer.Controllers.Exceptions;
+using LiteServer.Models;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Newtonsoft.Json;
@@ -27,6 +28,12 @@ namespace LiteServer.Middleware
             }
             catch (Exception ex)
             {
+                if (context.WebSockets.IsWebSocketRequest)
+                {
+                    // skip any errors with websocket connection
+                    return;
+                }
+
                 await HandleExceptionAsync(context, ex, env);
             }
         }
@@ -37,28 +44,28 @@ namespace LiteServer.Middleware
             var code = litex?.StatusCode ?? HttpStatusCode.InternalServerError;
             var message = litex?.ExposedMessage ?? "unknown error";
 
-            string result;
+            ErrorModel result;
             if (env.IsDevelopment())
             {
-                result = JsonConvert.SerializeObject(new
+                result = new DebugErrorModel()
                 {
-                    error = message,
-                    message = exception.Message,
-                    stacktrace = exception.StackTrace
-                });
+                    Exception = exception,
+                    Message = message
+                };
             }
             else
             {
-                result = JsonConvert.SerializeObject(new
+                result = new ErrorModel()
                 {
-                    error = message
-                });
+                    Message = message
+                };
             }
 
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)code;
 
-            return context.Response.WriteAsync(result);
+            var resultString = JsonConvert.SerializeObject(result);
+            return context.Response.WriteAsync(resultString);
         }
     }
 }
