@@ -9,6 +9,7 @@ namespace LiteServer.IO.DAL.Repository
 {
     public interface IUserRepository : IRepository<User, Guid>
     {
+        IEnumerable<User> Select(IList<Guid> guids);
         IEnumerable<User> SelectAll();
         User SelectWithEmail(string email);
         User CreateUser(string name, string email, byte[] passwordHash, byte[] salt);
@@ -38,6 +39,14 @@ namespace LiteServer.IO.DAL.Repository
         public User Select(Guid id)
         {
             return context.Db.Single<User>("SELECT * FROM user WHERE user.uuid = @0", id.ToBytes());
+        }
+
+        public IEnumerable<User> Select(IList<Guid> guids)
+        {
+            foreach (var user in context.Db.Query<User>("SELECT * FROM user WHERE uuid IN(@0)", guids.Distinct().Select((g) => g.ToBytes())))
+            {
+                yield return user;
+            }
         }
 
         public IEnumerable<User> SelectAll()

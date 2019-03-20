@@ -4,6 +4,7 @@ using LiteServer.Middleware;
 using LiteServer.Models;
 using LiteServer.Models.Payload;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections.Generic;
 
 namespace LiteServer.Controllers
 {
@@ -27,6 +28,19 @@ namespace LiteServer.Controllers
             var user = userRepository.Select(token.UserUuid);
 
             return UserModel.Create(user);
+        }
+
+        [HttpPost("info")]
+        public object GetUsersInfo([FromQuery] TokenQueryModel tokenInfo, [FromBody] UsersListModel usersList)
+        {
+            var result = new List<SimpleUserModel>();
+
+            foreach (var user in userRepository.Select(usersList.Users))
+            {
+                result.Add(SimpleUserModel.Create(user));
+            }
+
+            return result;
         }
     }
 }
