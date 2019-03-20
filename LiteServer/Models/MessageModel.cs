@@ -1,9 +1,6 @@
 ﻿using LiteServer.IO.DAL.Model;
 using Newtonsoft.Json;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace LiteServer.Models
 {
@@ -17,7 +14,9 @@ namespace LiteServer.Models
                 Text = message.Text,
                 GroupId = message.GroupId,
                 Time = message.Date,
-                UserUuid = message.UserUuid
+                UserUuid = message.UserUuid,
+                AttachmentType = message.AttachmentType,
+                AttachmentReference = message.AttachmentReference
             };
         }
 
@@ -31,5 +30,9 @@ namespace LiteServer.Models
         public uint GroupId;
         [JsonProperty("time")]
         public DateTime Time;
+        [JsonProperty("attachment_type")]
+        public byte AttachmentType;
+        [JsonProperty("attachment")]
+        public long AttachmentReference;
     }
 }

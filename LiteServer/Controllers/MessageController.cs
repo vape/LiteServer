@@ -2,7 +2,6 @@
 using LiteServer.Controllers.Exceptions;
 using LiteServer.Controllers.Extensions;
 using LiteServer.IO.DAL.Repository;
-using LiteServer.Middleware;
 using LiteServer.Models;
 using LiteServer.Models.Payload;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +11,12 @@ using System.Linq;
 
 namespace LiteServer.Controllers
 {
+    public enum AttachmentType : byte
+    {
+        None = 0,
+        Request
+    }
+
     [Route("api/[controller]")]
     [ApiController]
     public class MessageController : ControllerBase

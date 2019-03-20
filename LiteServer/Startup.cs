@@ -20,6 +20,7 @@ namespace LiteServer
             services.AddScoped<ITokenRepository>((s) => new TokenRepository(new BaseContext(config.ConnectionString)));
             services.AddScoped<IGroupRepository>((s) => new GroupRepository(new BaseContext(config.ConnectionString)));
             services.AddScoped<IMessageRepository>((s) => new MessageRepository(new BaseContext(config.ConnectionString)));
+            services.AddScoped<IRequestRepository>((s) => new RequestRepository(new BaseContext(config.ConnectionString)));
         }
     }
 
@@ -45,7 +46,6 @@ namespace LiteServer
             services.Configure<SocialConfig>((s) => Configuration.GetSection("Social").Bind(s));
             services.Configure<PlatformConfig>((p) => Configuration.GetSection("PlatformConfig").Bind(p));
             
-
             var databaseConfig = Configuration.GetSection("Database").Get<DatabaseConfig>();
             services.ConfigureRepositories(databaseConfig);
             

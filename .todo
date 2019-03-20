@@ -1,0 +1,3 @@
+# Implement any kind of ddos protection. Ban by ip if user creates more than X requests per minute.
+# Prevent users from filling out requests more than once. Implement server-side protection for this feature.
+# Do not allow filling out requests made in other groups. Its possible now and this is pretty bad considering that request ids is auto incrementing. It can be done if we use message id instead of request id and hide request id from user completely.

@@ -30,19 +30,15 @@ namespace LiteServer.IO.DAL.Model
         [Column("id")]
         public uint Id
         { get; set; }
-
         [Column("type")]
         public short Type
         { get; set; }
-
         [Column("name")]
         public string Name
         { get; set; }
-
         [Column("creator_uuid")]
         public byte[] CreatorUuidBinary
         { get; set; }
-
         [Column("creation_time")]
         public DateTime CreationTime
         { get; set; }

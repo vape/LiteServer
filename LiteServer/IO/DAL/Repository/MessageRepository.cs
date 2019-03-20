@@ -2,14 +2,12 @@
 using LiteServer.IO.DAL.Model;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace LiteServer.IO.DAL.Repository
 {
     public interface IMessageRepository : IRepository<Message, long>
     {
-        void Send(Guid userUuid, uint groupId, string message);
+        void Send(Guid userUuid, uint groupId, string message, byte attachmentType = 0, long attachmentReference = 0);
         IEnumerable<Message> SelectRange(uint groupId, long offset, long count);
         IEnumerable<Message> SelectMessagesAfterGiven(uint groupId, long offset, long count, long startId);
         IEnumerable<Message> SelectMessagesBeforeGiven(uint groupId, long offset, long count, long startId);
@@ -54,14 +52,16 @@ namespace LiteServer.IO.DAL.Repository
             return context.Db.Query<Message>("SELECT * FROM messages WHERE group_id=@0 ORDER BY date DESC LIMIT @1 OFFSET @2", groupId, count, offset);
         }
 
-        public void Send(Guid userUuid, uint groupId, string text)
+        public void Send(Guid userUuid, uint groupId, string text, byte attachmentType = 0, long attachmentReference = 0)
         {
             var message = new Message()
             {
                 Date = DateTime.UtcNow,
                 GroupId = groupId,
                 Text = text,
-                UserUuid = userUuid
+                UserUuid = userUuid,
+                AttachmentType = attachmentType,
+                AttachmentReference = attachmentReference
             };
 
             context.Db.Insert(message);
